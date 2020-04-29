@@ -27,8 +27,10 @@ import           Cardano.Prelude hiding (option)
 
 import           Cardano.Chain.Common (Lovelace, mkLovelace)
 import           Cardano.Common.Parsers (parseNodeAddress)
+import           Cardano.Crypto.ProtocolMagic (ProtocolMagicId(..))
 import           Cardano.Slotting.Slot (EpochNo (..))
 
+import           Cardano.Api (Network(..))
 import           Cardano.Config.Types (NodeAddress, SigningKeyFile(..))
 import           Cardano.Config.Shelley.OCert (KESPeriod(..))
 import           Cardano.CLI.Key (VerificationKeyFile(..))
@@ -66,7 +68,7 @@ data ShelleyCommand
 
 
 data AddressCmd
-  = AddressKeyGen OutputFile OutputFile
+  = AddressKeyGen Network
   | AddressKeyHash VerificationKeyFile
   | AddressBuild          --TODO
   | AddressBuildMultiSig  --TODO
@@ -223,7 +225,7 @@ pAddress =
       ]
   where
     pAddressKeyGen :: Parser AddressCmd
-    pAddressKeyGen = AddressKeyGen <$> pOutputFile <*> pOutputFile
+    pAddressKeyGen = AddressKeyGen <$> pNetwork
 
     pAddressKeyHash :: Parser AddressCmd
     pAddressKeyHash = AddressKeyHash <$> pVerificationKeyFile
@@ -572,6 +574,14 @@ pSigningKeyFile =
      <> Opt.help "Output filepath of the signing key."
      )
 
+pInputSigningKeyFile :: Parser SigningKeyFile
+pInputSigningKeyFile =
+  SigningKeyFile <$>
+   Opt.strOption
+     (  Opt.long "signing-key-file"
+     <> Opt.metavar "FILEPATH"
+     <> Opt.help "Filepath of the signing key."
+     )
 
 pBlockId :: Parser BlockId
 pBlockId =
@@ -614,7 +624,14 @@ pGenesisFile =
       <> Opt.metavar "FILE"
       <> Opt.help "The genesis file."
       )
-
+pNetwork :: Parser Network
+pNetwork =     Opt.flag' Mainnet (Opt.long "mainnet")
+           <|> Testnet . ProtocolMagicId
+                      <$> Opt.option Opt.auto
+                            (  Opt.long "testnet"
+                            <> Opt.metavar "WORD32"
+                            <> Opt.help "ProtocolMagicId of the testnet"
+                            )
 pOperatorCertIssueCounterFile :: Parser OpCertCounterFile
 pOperatorCertIssueCounterFile =
   OpCertCounterFile <$>
@@ -667,4 +684,12 @@ pKESVerificationKeyFile =
       (  Opt.long "hot-kes-verification-key-file"
       <> Opt.metavar "FILEPATH"
       <> Opt.help "Filepath of the hot KES verification key."
+      )
+pInputVerificationKeyFile :: Parser VerificationKeyFile
+pInputVerificationKeyFile =
+  VerificationKeyFile <$>
+    Opt.strOption
+      (  Opt.long "verification-key-file"
+      <> Opt.metavar "FILEPATH"
+      <> Opt.help "Filepath of the verification key."
       )

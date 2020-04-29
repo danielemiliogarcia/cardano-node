@@ -3,11 +3,18 @@
 module Cardano.Api.CBOR
   ( addressFromCBOR
   , addressToCBOR
-  , keyPairFromCBOR
-  , keyPairToCBOR
-  , publicKeyFromCBOR
-  , publicKeyToCBOR
 
+  , byronPublicKeyFromCBOR
+  , shelleyPublicKeyFromCBOR
+
+  , byronKeyPairFromCBOR
+  , byronKeyPairToCBOR
+  , shelleyKeyPairToCBOR
+  , shelleyKeyPairFromCBOR
+
+
+  , renderByronPublicKeyToCBOR
+  , renderShelleyPublicKeyToCBOR
   , shelleyVerificationKeyFromCBOR
   , shelleyVerificationKeyToCBOR
 
@@ -44,7 +51,7 @@ addressFromCBOR bs =
       tag <- CBOR.decodeWord8
       case tag of
         170  -> AddressByron <$> fromCBOR
-        171  -> pure AddressShelley
+        171  -> BootStrapAddressShelley <$> fromCBOR
         _  -> cborError $ DecoderErrorUnknownTag "Address" tag
 
 addressToCBOR :: Address -> ByteString
@@ -52,55 +59,89 @@ addressToCBOR kp =
   CBOR.serializeEncoding' $
     case kp of
       AddressByron ba -> mconcat [ toCBOR (170 :: Word8), toCBOR ba ]
-      AddressShelley -> toCBOR (171 :: Word8)
+      BootStrapAddressShelley sa -> mconcat [ toCBOR (171 :: Word8), toCBOR sa]
 
-keyPairFromCBOR :: ByteString -> Either ApiError KeyPair
-keyPairFromCBOR bs =
-   first ApiErrorCBOR . CBOR.decodeFullDecoder "KeyPair" decode $ LBS.fromStrict bs
+byronKeyPairFromCBOR :: ByteString -> Either ApiError ByronKeyPair
+byronKeyPairFromCBOR bs =
+   first ApiErrorCBOR . CBOR.decodeFullDecoder "ByronKeyPair" decode $ LBS.fromStrict bs
   where
-    decode :: Decoder s KeyPair
+    decode :: Decoder s ByronKeyPair
     decode = do
       tag <- CBOR.decodeWord8
       case tag of
         172  -> KeyPairByron <$> fromCBOR <*> fromCBOR
-        173  -> KeyPairShelley <$> decodeShelleyVerificationKey <*> (SKey <$> decodeSignKeyDSIGN)
-        _  -> cborError $ DecoderErrorUnknownTag "KeyPair" tag
+        _  -> cborError $ DecoderErrorUnknownTag "ByronKeyPair" tag
 
-keyPairToCBOR :: KeyPair -> ByteString
-keyPairToCBOR kp =
-  CBOR.serializeEncoding' $
-    case kp of
-      KeyPairByron vk sk -> mconcat [ toCBOR (172 :: Word8), toCBOR vk, toCBOR sk ]
-      KeyPairShelley svk (SKey sk) ->
-        mconcat
-          [ toCBOR (173 :: Word8)
-          , encodeShelleyVerificationKey svk
-          , encodeSignKeyDSIGN sk
-          ]
+byronKeyPairToCBOR :: ByronKeyPair -> ByteString
+byronKeyPairToCBOR (KeyPairByron vk sk) =
+  CBOR.serializeEncoding' $ mconcat [ toCBOR (172 :: Word8), toCBOR vk, toCBOR sk ]
 
-publicKeyFromCBOR :: ByteString -> Either ApiError PublicKey
-publicKeyFromCBOR bs =
-   first ApiErrorCBOR . CBOR.decodeFullDecoder "PublicKey" decode $ LBS.fromStrict bs
+
+shelleyKeyPairFromCBOR :: ByteString -> Either ApiError ShelleyKeyPair
+shelleyKeyPairFromCBOR bs =
+   first ApiErrorCBOR . CBOR.decodeFullDecoder "ShelleyKeyPair" decode $ LBS.fromStrict bs
   where
-    decode :: Decoder s PublicKey
+    decode :: Decoder s ShelleyKeyPair
     decode = do
       tag <- CBOR.decodeWord8
       case tag of
-        174  -> PubKeyByron <$> networkFromCBOR <*> fromCBOR
-        175  -> PubKeyShelley <$> networkFromCBOR <*> decodeShelleyVerificationKey
-        _  -> cborError $ DecoderErrorUnknownTag "KeyPair" tag
+        173  -> KeyPairShelley <$> decodeShelleyVerificationKey <*> (SKey <$> decodeSignKeyDSIGN)
+        _  -> cborError $ DecoderErrorUnknownTag "ShelleyKeyPair" tag
 
-publicKeyToCBOR :: PublicKey -> ByteString
-publicKeyToCBOR pk =
-  CBOR.serializeEncoding' $
-    case pk of
-      PubKeyByron nw vk -> mconcat [ toCBOR (174 :: Word8), networkToCBOR nw, toCBOR vk ]
-      PubKeyShelley nw vk ->
-        mconcat
-          [ toCBOR (175 :: Word8)
-          , networkToCBOR nw
-          , encodeShelleyVerificationKey vk
-          ]
+shelleyKeyPairToCBOR :: ShelleyKeyPair -> ByteString
+shelleyKeyPairToCBOR kp =
+  case kp of
+    KeyPairShelley svk (SKey sk) ->
+      CBOR.serializeEncoding' $
+            mconcat
+              [ toCBOR (173 :: Word8)
+              , encodeShelleyVerificationKey svk
+              , encodeSignKeyDSIGN sk
+              ]
+    GenesisKeyPairShelley -> undefined
+
+
+byronPublicKeyFromCBOR :: ByteString -> Either ApiError ByronPublicKey
+byronPublicKeyFromCBOR bs =
+   first ApiErrorCBOR . CBOR.decodeFullDecoder "ByronPublicKey" decode $ LBS.fromStrict bs
+  where
+    decode :: Decoder s ByronPublicKey
+    decode = do
+      tag <- CBOR.decodeWord8
+      case tag of
+        174  -> PubKeyByron' <$> networkFromCBOR <*> fromCBOR
+        _  -> cborError $ DecoderErrorUnknownTag "ByronKeyPair" tag
+
+shelleyPublicKeyFromCBOR :: ByteString -> Either ApiError ShelleyPublicKey
+shelleyPublicKeyFromCBOR bs =
+   first ApiErrorCBOR . CBOR.decodeFullDecoder "ByronPublicKey" decode $ LBS.fromStrict bs
+  where
+    decode :: Decoder s ShelleyPublicKey
+    decode = do
+      tag <- CBOR.decodeWord8
+      case tag of
+        175 -> BootStrapPubKeyShelley' <$> decodeShelleyVerificationKey
+        176 -> GenesisPubKeyShelley <$> decodeShelleyVerificationKey
+        _  -> cborError $ DecoderErrorUnknownTag "ShelleyKeyPair" tag
+
+renderByronPublicKeyToCBOR :: ByronPublicKey -> ByteString
+renderByronPublicKeyToCBOR (PubKeyByron' nw vk) =
+  CBOR.serializeEncoding' $ mconcat [ toCBOR (174 :: Word8), networkToCBOR nw, toCBOR vk ]
+
+renderShelleyPublicKeyToCBOR :: ShelleyPublicKey -> ByteString
+renderShelleyPublicKeyToCBOR (BootStrapPubKeyShelley' (Genesis vk)) =
+  CBOR.serializeEncoding' $ mconcat [ toCBOR (175 :: Word8), toCBOR vk ]
+renderShelleyPublicKeyToCBOR (BootStrapPubKeyShelley' (Regular vk)) =
+  CBOR.serializeEncoding' $ mconcat [ toCBOR (175 :: Word8), toCBOR vk ]
+
+--publicKeyToCBOR :: PublicKey -> ByteString
+--publicKeyToCBOR pk =
+--  CBOR.serializeEncoding' $
+--    case pk of
+--      PubKeyByron nw vk ->
+--        mconcat [ toCBOR (174 :: Word8), networkToCBOR nw, toCBOR vk ]
+--      BootStrapPubKeyShelley vk ->
+--        mconcat [ toCBOR (175 :: Word8), encodeShelleyVerificationKey vk]
 
 txSignedFromCBOR :: ByteString -> Either ApiError TxSigned
 txSignedFromCBOR bs =
@@ -152,8 +193,8 @@ decodeShelleyVerificationKey :: Decoder s ShelleyVerificationKey
 decodeShelleyVerificationKey = do
   tag <- CBOR.decodeWord8
   case tag of
-    180 -> GenesisShelleyVerificationKey <$> (VKeyGenesis <$> decodeVerKeyDSIGN)
-    181 -> RegularShelleyVerificationKey <$> (VKey <$> decodeVerKeyDSIGN)
+    180 -> Genesis <$> (VKeyGenesis <$> decodeVerKeyDSIGN)
+    181 -> Regular <$> (VKey <$> decodeVerKeyDSIGN)
     _  -> cborError $ DecoderErrorUnknownTag "ShelleyVerificationKey" tag
 
 shelleyVerificationKeyToCBOR :: ShelleyVerificationKey -> ByteString
@@ -162,9 +203,9 @@ shelleyVerificationKeyToCBOR = CBOR.serializeEncoding' . encodeShelleyVerificati
 encodeShelleyVerificationKey :: ShelleyVerificationKey -> Encoding
 encodeShelleyVerificationKey svk =
   case svk of
-    GenesisShelleyVerificationKey (DiscVKey vk) ->
+    Genesis (DiscVKey vk) ->
       mconcat [toCBOR (180 :: Word8), encodeVerKeyDSIGN vk]
-    RegularShelleyVerificationKey (DiscVKey vk) ->
+    Regular (DiscVKey vk) ->
       mconcat [toCBOR (181 :: Word8), encodeVerKeyDSIGN vk]
 
 -- -------------------------------------------------------------------------------------------------

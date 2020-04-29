@@ -33,13 +33,13 @@ import           Hedgehog (Gen)
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-
+-- TODO: Next you need to change the types of the generators and fix the property tests
 genAddress :: Gen Address
 genAddress =
   -- When Shelly is sorted out, this should change to `Gen.choose`.
   Gen.frequency
     [ (9, byronPubKeyAddress <$> genPublicKey)
-    , (1, pure AddressShelley)
+    , (1, pure BootStrapAddressShelley)
     ]
 
 genKeyPair :: Gen KeyPair

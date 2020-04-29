@@ -8,9 +8,7 @@ module Cardano.Api
   ( module X
 
   , Address (..)
-  , KeyPair (..)
   , Network (..)
-  , PublicKey (..)
   , ShelleyKeyDiscriminator (..)
   , ShelleyVerificationKey (..)
   , TxSigned (..)
@@ -19,7 +17,7 @@ module Cardano.Api
 
   , buildTransaction
   , byronPubKeyAddress
-  , byronGenKeyPair
+  , byronGenKeyPair'
   , shelleyGenKeyPair
   , getTxSignedBody
   , getTxSignedHash
@@ -27,7 +25,9 @@ module Cardano.Api
   , getTxUnsignedBody
   , getTxUnsignedHash
 
-  , mkPublicKey
+  , mkByronPublicKey
+  , mkShelleyPublicKey
+  , mkShelleyPubKeyAddress
   , signTransaction
   , witnessTransaction
   , signTransactionWithWitness
@@ -70,16 +70,17 @@ import           Ouroboros.Consensus.Shelley.Protocol.Crypto (TPraosStandardCryp
 
 import           Shelley.Spec.Ledger.Crypto (DSIGN)
 import qualified Shelley.Spec.Ledger.Keys as Shelley (SKey (..), pattern VKey,
-                     pattern VKeyGenesis)
+                     pattern VKeyGenesis, hashKey)
+import           Shelley.Spec.Ledger.TxData (Addr(..))
 
-byronGenKeyPair :: IO KeyPair
-byronGenKeyPair =
+byronGenKeyPair' :: IO ByronKeyPair
+byronGenKeyPair' =
   uncurry KeyPairByron <$> runSecureRandom Crypto.keyGen
 
-shelleyGenKeyPair :: ShelleyKeyDiscriminator -> IO KeyPair
+shelleyGenKeyPair :: ShelleyKeyDiscriminator -> IO ShelleyKeyPair
 shelleyGenKeyPair = runSecureRandom . genericShelleyKeyPair
 
-genericShelleyKeyPair :: MonadRandom m => ShelleyKeyDiscriminator -> m KeyPair
+genericShelleyKeyPair :: MonadRandom m => ShelleyKeyDiscriminator -> m ShelleyKeyPair
 genericShelleyKeyPair skd = do
     sk <- genKeyDSIGN
     pure $ KeyPairShelley (mkShelleyVKey (deriveVerKeyDSIGN sk)) (Shelley.SKey sk)
@@ -87,25 +88,30 @@ genericShelleyKeyPair skd = do
     mkShelleyVKey :: VerKeyDSIGN (DSIGN TPraosStandardCrypto) -> ShelleyVerificationKey
     mkShelleyVKey vk =
       case skd of
-        GenesisShelleyKey -> GenesisShelleyVerificationKey $ Shelley.VKeyGenesis vk
-        RegularShelleyKey -> RegularShelleyVerificationKey $ Shelley.VKey vk
+        GenesisShelleyKey -> Genesis $ Shelley.VKeyGenesis vk
+        RegularShelleyKey -> Regular $ Shelley.VKey vk
 
 -- Given key information (public key, and other network parameters), generate an Address.
 -- Originally: mkAddress :: Network -> PubKey -> PubKeyInfo -> Address
 -- but since PubKeyInfo already has the PublicKey and Network, it can be simplified.
 -- This is true for Byron, but for Shelley there’s also an optional StakeAddressRef as input to
 -- Address generation
-byronPubKeyAddress :: PublicKey -> Address
-byronPubKeyAddress pk =
-  case pk of
-    PubKeyByron nw vk -> AddressByron $ Byron.makeVerKeyAddress (byronNetworkMagic nw) vk
-    PubKeyShelley _ _ -> panic "Cardano.Api.byronPubKeyAddress: PubKeyInfoShelley"
+byronPubKeyAddress :: ByronPublicKey -> Address
+byronPubKeyAddress (PubKeyByron' nw vk) =
+  AddressByron $ Byron.makeVerKeyAddress (byronNetworkMagic nw) vk
 
-mkPublicKey :: KeyPair -> Network -> PublicKey
-mkPublicKey kp nw =
-  case kp of
-    KeyPairByron vk _ -> PubKeyByron nw vk
-    KeyPairShelley vk _ -> PubKeyShelley nw vk
+mkShelleyPubKeyAddress :: ShelleyPublicKey -> Addr TPraosStandardCrypto
+mkShelleyPubKeyAddress (GenesisPubKeyShelley (Genesis _vKey)) = undefined
+mkShelleyPubKeyAddress (GenesisPubKeyShelley (Regular _vKey)) = undefined
+mkShelleyPubKeyAddress (BootStrapPubKeyShelley' (Regular vKey)) = AddrBootstrap $ Shelley.hashKey vKey
+mkShelleyPubKeyAddress (BootStrapPubKeyShelley' (Genesis _vKey)) = undefined
+
+mkByronPublicKey :: ByronKeyPair -> Network -> ByronPublicKey
+mkByronPublicKey (KeyPairByron vk _sk) nw = PubKeyByron' nw vk
+
+mkShelleyPublicKey :: ShelleyKeyPair -> ShelleyPublicKey
+mkShelleyPublicKey (KeyPairShelley vk _sk) = BootStrapPubKeyShelley' vk
+mkShelleyPublicKey GenesisKeyPairShelley = undefined
 
 byronNetworkMagic :: Network -> Byron.NetworkMagic
 byronNetworkMagic nw =

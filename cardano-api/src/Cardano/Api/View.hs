@@ -1,25 +1,25 @@
 module Cardano.Api.View
   ( parseAddressView
-  , parseKeyPairView
-  , parsePublicKeyView
+  --, parseKeyPairView
+  , parseByronPublicKeyView
+  , parseShelleyPublicKeyView
   , parseTxSignedView
   , parseTxUnsignedView
 
   , readAddress
-  , readKeyPair
-  , readPublicKey
+  , readByronPublicKey
+  , readShelleyPublicKey
   , readTxSigned
   , readTxUnsigned
 
   , renderAddressView
-  , renderKeyPairView
-  , renderPublicKeyView
+  , renderByronKeyPairView
+  , renderByronPublicKeyView
+  , renderShelleyPublicKeyView
   , renderTxSignedView
   , renderTxUnsignedView
 
   , writeAddress
-  , writeKeyPair
-  , writePublicKey
   , writeTxSigned
   , writeTxUnsigned
   ) where
@@ -44,13 +44,17 @@ parseAddressView :: ByteString -> Either ApiError Address
 parseAddressView bs =
   either convertTextViewError (addressFromCBOR . tvRawCBOR) $ parseTextView bs
 
-parseKeyPairView :: ByteString -> Either ApiError KeyPair
-parseKeyPairView bs =
-  either convertTextViewError (keyPairFromCBOR . tvRawCBOR) $ parseTextView bs
+--parseKeyPairView :: ByteString -> Either ApiError KeyPair
+--parseKeyPairView bs =
+--  either convertTextViewError (keyPairFromCBOR . tvRawCBOR) $ parseTextView bs
 
-parsePublicKeyView :: ByteString -> Either ApiError PublicKey
-parsePublicKeyView bs =
-  either convertTextViewError (publicKeyFromCBOR . tvRawCBOR) $ parseTextView bs
+parseByronPublicKeyView :: ByteString -> Either ApiError ByronPublicKey
+parseByronPublicKeyView bs =
+  either convertTextViewError (byronPublicKeyFromCBOR . tvRawCBOR) $ parseTextView bs
+
+parseShelleyPublicKeyView :: ByteString -> Either ApiError ShelleyPublicKey
+parseShelleyPublicKeyView bs =
+  either convertTextViewError (shelleyPublicKeyFromCBOR . tvRawCBOR) $ parseTextView bs
 
 parseTxSignedView :: ByteString -> Either ApiError TxSigned
 parseTxSignedView bs =
@@ -64,28 +68,39 @@ renderAddressView :: Address -> ByteString
 renderAddressView addr =
   case addr of
     AddressByron {} -> renderTextView $ TextView "PublicKeyByron" "Free form text" cbor
-    AddressShelley {} -> renderTextView $ TextView "KeyPairShelley" "Free form text" cbor
+    BootStrapAddressShelley {} -> renderTextView $ TextView "KeyPairShelley" "Free form text" cbor
   where
     cbor :: ByteString
     cbor = addressToCBOR addr
 
-renderKeyPairView :: KeyPair -> ByteString
-renderKeyPairView kp =
-  case kp of
-    KeyPairByron {} -> renderTextView $ TextView "PublicKeyByron" "Free form text" cbor
-    KeyPairShelley {} -> renderTextView $ TextView "KeyPairShelley" "Free form text" cbor
+renderByronKeyPairView :: ByronKeyPair -> ByteString
+renderByronKeyPairView kp = renderTextView $ TextView "PublicKeyByron" "Free form text" cbor
   where
     cbor :: ByteString
-    cbor = keyPairToCBOR kp
+    cbor = byronKeyPairToCBOR kp
 
-renderPublicKeyView :: PublicKey -> ByteString
-renderPublicKeyView pk =
-  case pk of
-    PubKeyByron {} -> renderTextView $ TextView "PublicKeyByron" "Free form text" cbor
-    PubKeyShelley {} -> renderTextView $ TextView "PubKeyShelley" "Free form text" cbor
+renderShelleyKeyPairView :: ShelleyKeyPair -> ByteString
+renderShelleyKeyPairView kp =
+  case kp of
+    KeyPairShelley vkey sKey -> renderTextView $ TextView "KeyPairShelley" "Free form text" cbor
+    GenesisKeyPairShelley -> undefined
   where
     cbor :: ByteString
-    cbor = publicKeyToCBOR pk
+    cbor = shelleyKeyPairToCBOR kp
+
+renderByronPublicKeyView :: ByronPublicKey -> ByteString
+renderByronPublicKeyView pk =
+   renderTextView $ TextView "PublicKeyByron" "Free form text" cbor
+  where
+    cbor :: ByteString
+    cbor = renderByronPublicKeyToCBOR pk
+
+renderShelleyPublicKeyView :: ShelleyPublicKey -> ByteString
+renderShelleyPublicKeyView pk =
+    renderTextView $ TextView "BootStrapPubKeyShelley" "Free form text" cbor
+  where
+    cbor :: ByteString
+    cbor = renderShelleyPublicKeyToCBOR pk
 
 renderTxSignedView :: TxSigned -> ByteString
 renderTxSignedView ts =
@@ -135,17 +150,23 @@ readAddress path =
     bs <- handleIOExceptT (ApiErrorIO path) $ BS.readFile path
     hoistEither $ parseAddressView bs
 
-readKeyPair :: FilePath -> IO (Either ApiError KeyPair)
-readKeyPair path =
-  runExceptT $ do
-    bs <- handleIOExceptT (ApiErrorIO path) $ BS.readFile path
-    hoistEither $ parseKeyPairView bs
+--readKeyPair :: FilePath -> IO (Either ApiError KeyPair)
+--readKeyPair path =
+--  runExceptT $ do
+--    bs <- handleIOExceptT (ApiErrorIO path) $ BS.readFile path
+--    hoistEither $ parseKeyPairView bs
 
-readPublicKey :: FilePath -> IO (Either ApiError PublicKey)
-readPublicKey path =
+readByronPublicKey :: FilePath -> IO (Either ApiError ByronPublicKey)
+readByronPublicKey path =
   runExceptT $ do
     bs <- handleIOExceptT (ApiErrorIO path) $ BS.readFile path
-    hoistEither $ parsePublicKeyView bs
+    hoistEither $ parseByronPublicKeyView bs
+
+readShelleyPublicKey :: FilePath -> IO (Either ApiError ShelleyPublicKey)
+readShelleyPublicKey path =
+  runExceptT $ do
+    bs <- handleIOExceptT (ApiErrorIO path) $ BS.readFile path
+    hoistEither $ parseShelleyPublicKeyView bs
 
 readTxSigned :: FilePath -> IO (Either ApiError TxSigned)
 readTxSigned path =
@@ -164,15 +185,10 @@ writeAddress path kp =
   runExceptT .
     handleIOExceptT (ApiErrorIO path) $ BS.writeFile path (renderAddressView kp)
 
-writeKeyPair :: FilePath -> KeyPair -> IO (Either ApiError ())
-writeKeyPair path kp =
-  runExceptT .
-    handleIOExceptT (ApiErrorIO path) $ BS.writeFile path (renderKeyPairView kp)
-
-writePublicKey :: FilePath -> PublicKey -> IO (Either ApiError ())
-writePublicKey path kp =
-  runExceptT .
-    handleIOExceptT (ApiErrorIO path) $ BS.writeFile path (renderPublicKeyView kp)
+--writeKeyPair :: FilePath -> KeyPair -> IO (Either ApiError ())
+--writeKeyPair path kp =
+--  runExceptT .
+--    handleIOExceptT (ApiErrorIO path) $ BS.writeFile path (renderKeyPairView kp)
 
 writeTxSigned :: FilePath -> TxSigned -> IO (Either ApiError ())
 writeTxSigned path kp =
